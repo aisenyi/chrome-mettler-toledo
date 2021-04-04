@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title></title>
+
+    <!-- Bootstrap -->
+    <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css'>
+    <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css'>
+
+    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+      <script src='https://oss.maxcdn.com/libs/html5shiv/3.7.2/html5shiv.js'></script>
+      <script src='https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js'></script>
+    <![endif]-->
+
+		<script src='serial_port.js'></script>
+
+    <script>
+      isExtensionInstalled(
+        function(installed){
+          if(!installed){
+            alert("Serial Port Interface extension is missing. Please install");
+          }
+        }
+      );
+
+      var serialPort = new SerialPort;
+      serialPort.setOnDataReceivedCallback(onNewData);
+      realodDevices();
+
+      function realodDevices(){
+        getDevicesList(
+          function(response){
+            $('#devices').empty();
+
+            if(response.result === "ok"){
+              for(var i = 0; i < response.ports.length; i++){
+                $('#devices').append('<option value="' + response.ports[i].path +  '">' + response.ports[i].displayName + '(' + response.ports[i].path + ')' + '</option>');
+              }
+            }
+            else{
+              alert(response.error);
+            }
+          }
+        );
+      }
+
+      function openSelectedPort(){
+        serialPort.openPort(
+          {
+            portName: $('#devices').val(),
+            bitrate: 9600,
+            dataBits: "eight",
+            parityBit: "no",
+            stopBits: "one"
+          },
+          function(response){
+            console.log(response);
+            if(response.result === "ok"){
+              //Do something
+            }
+            else{
+              alert(response.error);
+            }
+          }
+        );
+      }
+
+      function closeCurrentPort(){
+        serialPort.closePort(
+          function(response){
+            console.log(response);
+            if(response.result === "ok"){
+              //Do something
+            }
+            else{
+              alert(response.error);
+            }
+          }
+        );
+      }
+
+      function onNewData(data){
+        var str = "";
+        var dv = new DataView(data);
+        for(var i = 0; i < dv.byteLength; i++){
+            str = str.concat(String.fromCharCode(dv.getUint8(i, true)));
+        }
+        $('#output').append(str);
+      }
+
+      function sendData(){
+        var input = stringToArrayBuffer($('#input').val());
+
+        serialPort.write(input,
+          function(response){
+            console.log(response);
+          }
+        );
+      }
+
+      function stringToArrayBuffer(string){
+        var buffer = new ArrayBuffer(string.length);
+        var dv = new DataView(buffer);
+        for(var i = 0; i < string.length; i++){
+          dv.setUint8(i, string.charCodeAt(i));
+        }
+        return dv.buffer;
+      }
+
+      window.onbeforeunload = function(){
+        if(serialPort.isOpen()){
+          serialPort.closePort(
+            function(response){
+              console.log(response);
+              if(response.result === "ok"){
+                return null;
+              }
+              else{
+                alert(response.error);
+                return false;
+              }
+            }
+          );
+        }
+        return null;
+      }
+
+    </script>
+
+  </head>
+
+  <body>
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js'></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script src='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js'></script>
+
+    <select id='devices'></select>
+    <button onclick='realodDevices()'>Reload</button>
+    <button onclick='openSelectedPort()'>Open</button>
+    <button onclick='closeCurrentPort()'>Close</button>
+    <br>
+    <textarea id="output" rows="10" cols="50"></textarea>
+    <br>
+    <input type="text" id="input">
+    <button onclick='sendData()'>Send</button>
+
+
+  </body>
+
+</html>
