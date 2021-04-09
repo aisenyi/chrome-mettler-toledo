@@ -21,6 +21,10 @@ var serialPort = [];
 */
 var serialConnections = [];
 
+var weightLoop;
+
+var isWeightLoop = false;
+
 /**
 * Listener called when a new ::SerialPort instance is created.
 * A GUID is generated and sent back to the web page and the comunication port is saved inside ::serialPort with the GUID as index.
@@ -69,6 +73,15 @@ chrome.runtime.onMessageExternal.addListener(
 		else if(request.cmd === "installed"){
 			checkInstalled(request, sender, sendResponse);
 		}
+		else if(request.cmd == "getweight"){
+			isWeightLoop = true;
+			getWeight(request.connectionId);
+		}
+		else if(request.cmd == "stopweight"){
+			isWeightLoop = false;
+			console.log("Stop weight got called");
+			//clearInterval(weightLoop);
+		}
 
 		return true;
 });
@@ -82,7 +95,6 @@ chrome.serial.onReceive.addListener(
 	function(info){
 		console.log(info);
 		console.log(new Uint8Array(Array.prototype.slice.call(new Uint8Array(info.data))));
-		//New code to be deleted
 		var str = "";
 		var dv = new DataView(info.data);
 		for(var i = 0; i < dv.byteLength; i++){
@@ -90,7 +102,19 @@ chrome.serial.onReceive.addListener(
 		}
 		console.log({"str": str});
 		console.log({"serialport": serialPort});
-		//End new code to be deleted
+		var weight = parseFloat(str)
+		if(isNaN(weight)){
+			weightLoop = setTimeout(getWeight(info.connectionId), 400);
+		}
+		else{
+			if(isWeightLoop){
+				clearTimeout(weightLoop);
+				setTimeout(getWeight(info.connectionId), 200);
+			}
+			else{
+				console.log('Weigh loop canceled!');
+			}
+		}
 		var portGUID = serialConnections[info.connectionId];
 		serialPort[portGUID].postMessage({header: "serialdata", data: Array.prototype.slice.call(new Uint8Array(info.data))});
 	}
@@ -201,6 +225,26 @@ function writeOnPort(request, sender, sendResponse){
 			}
 		}
 	);
+}
+
+function getWeight(connectionId){
+	var data = stringToArrayBuffer('W');
+	//weightLoop = window.setInterval(writeOnPort(data, sender, sendResponse), 500);
+	
+	chrome.serial.send(connectionId, new Uint8Array(data).buffer,
+		function(response){
+			console.log(response);
+		}
+	);
+}
+
+function stringToArrayBuffer(string){
+	var buffer = new ArrayBuffer(string.length);
+	var dv = new DataView(buffer);
+	for(var i = 0; i < string.length; i++){
+	  dv.setUint8(i, string.charCodeAt(i));
+	}
+	return dv.buffer;
 }
 
 /**
