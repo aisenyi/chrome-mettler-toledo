@@ -25,6 +25,8 @@ var weightLoop;
 
 var isWeightLoop = false;
 
+var oldWeight = 0;
+
 /**
 * Listener called when a new ::SerialPort instance is created.
 * A GUID is generated and sent back to the web page and the comunication port is saved inside ::serialPort with the GUID as index.
@@ -56,7 +58,6 @@ chrome.runtime.onConnectExternal.addListener(
 */
 chrome.runtime.onMessageExternal.addListener(
 	function(request, sender, sendResponse) {
-		console.log(request);
 
 		if(request.cmd === "open"){
 			openPort(request, sender, sendResponse);
@@ -75,12 +76,12 @@ chrome.runtime.onMessageExternal.addListener(
 		}
 		else if(request.cmd == "getweight"){
 			isWeightLoop = true;
-			getWeight(request.connectionId);
+			//getWeight(request.connectionId);
+			getWeight(request, sender, sendResponse);
 		}
 		else if(request.cmd == "stopweight"){
 			isWeightLoop = false;
-			console.log("Stop weight got called");
-			//clearInterval(weightLoop);
+			clearInterval(weightLoop);
 		}
 
 		return true;
@@ -93,30 +94,36 @@ chrome.runtime.onMessageExternal.addListener(
 */
 chrome.serial.onReceive.addListener(
 	function(info){
-		console.log(info);
-		console.log(new Uint8Array(Array.prototype.slice.call(new Uint8Array(info.data))));
 		var str = "";
 		var dv = new DataView(info.data);
 		for(var i = 0; i < dv.byteLength; i++){
 			str = str.concat(String.fromCharCode(dv.getUint8(i, true)));
 		}
 		console.log({"str": str});
-		console.log({"serialport": serialPort});
-		var weight = parseFloat(str)
-		if(isNaN(weight)){
-			weightLoop = setTimeout(getWeight(info.connectionId), 400);
-		}
-		else{
-			if(isWeightLoop){
-				clearTimeout(weightLoop);
-				setTimeout(getWeight(info.connectionId), 200);
+		if(isWeightLoop){
+			var weight = parseFloat(str);
+			if(isNaN(weight)){
+				/*weightLoop = setTimeout(function(){
+					getWeight(info.connectionId)
+				}, 10000);*/
 			}
 			else{
-				console.log('Weigh loop canceled!');
+				if(weight != oldWeight && weight > 0){
+					var portGUID = serialConnections[info.connectionId];
+					serialPort[portGUID].postMessage({header: "serialdata", data: Array.prototype.slice.call(new Uint8Array(info.data))});
+					oldWeight = weight;
+				}
+				/*clearTimeout(weightLoop);
+				setTimeout(function(){
+					getWeight(info.connectionId)
+				}, 10000);*/
 			}
 		}
-		var portGUID = serialConnections[info.connectionId];
-		serialPort[portGUID].postMessage({header: "serialdata", data: Array.prototype.slice.call(new Uint8Array(info.data))});
+		else{
+			var portGUID = serialConnections[info.connectionId];
+			serialPort[portGUID].postMessage({header: "serialdata", data: Array.prototype.slice.call(new Uint8Array(info.data))});
+			console.log('Not in weighloop');
+		}
 	}
 );
 
@@ -227,15 +234,14 @@ function writeOnPort(request, sender, sendResponse){
 	);
 }
 
-function getWeight(connectionId){
+function getWeight(request, sender, sendResponse){
 	var data = stringToArrayBuffer('W');
-	//weightLoop = window.setInterval(writeOnPort(data, sender, sendResponse), 500);
-	
-	chrome.serial.send(connectionId, new Uint8Array(data).buffer,
-		function(response){
-			console.log(response);
-		}
-	);
+	weightLoop = window.setInterval(function(){
+		chrome.serial.send(request.connectionId, new Uint8Array(data).buffer,
+			function(response){
+			}
+		);
+	}, 500);
 }
 
 function stringToArrayBuffer(string){
